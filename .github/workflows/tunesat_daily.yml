@@ -1,0 +1,91 @@
+name: Tunesat Daily Report
+
+on:
+  schedule:
+    # 7:00 UTC = 8:00 Madrid (horario invierno CET)
+    # 6:00 UTC = 8:00 Madrid (horario verano CEST)
+    # Usamos 6:00 UTC para cubrir ambos (en invierno llegará a las 7h Madrid,
+    # por eso añadimos también el de las 7:00 UTC)
+    - cron: '0 6 * * *'   # 8:00 CEST (verano)
+    - cron: '0 7 * * *'   # 8:00 CET  (invierno)
+  workflow_dispatch:       # Permite ejecutarlo manualmente desde GitHub
+
+env:
+  TZ: Europe/Madrid
+
+jobs:
+  tunesat-report:
+    runs-on: ubuntu-latest
+    # Evitar doble ejecución en días con ambos triggers activos
+    concurrency:
+      group: tunesat-daily
+      cancel-in-progress: false
+
+    steps:
+      - name: 📥 Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Instalar dependencias Python
+        run: pip install -r requirements.txt
+
+      - name: 🎭 Instalar Playwright + Chromium
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: 📂 Restaurar datos históricos (caché entre runs)
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: tunesat-data-${{ github.run_id }}
+          restore-keys: |
+            tunesat-data-
+
+      - name: 🎵 Ejecutar agente Tunesat
+        env:
+          TUNESAT_USER_1: ${{ secrets.TUNESAT_USER_1 }}
+          TUNESAT_PASS_1: ${{ secrets.TUNESAT_PASS_1 }}
+          TUNESAT_USER_2: ${{ secrets.TUNESAT_USER_2 }}
+          TUNESAT_PASS_2: ${{ secrets.TUNESAT_PASS_2 }}
+          TUNESAT_USER_3: ${{ secrets.TUNESAT_USER_3 }}
+          TUNESAT_PASS_3: ${{ secrets.TUNESAT_PASS_3 }}
+          TUNESAT_USER_4: ${{ secrets.TUNESAT_USER_4 }}
+          TUNESAT_PASS_4: ${{ secrets.TUNESAT_PASS_4 }}
+          TUNESAT_USER_5: ${{ secrets.TUNESAT_USER_5 }}
+          TUNESAT_PASS_5: ${{ secrets.TUNESAT_PASS_5 }}
+          TUNESAT_USER_6: ${{ secrets.TUNESAT_USER_6 }}
+          TUNESAT_PASS_6: ${{ secrets.TUNESAT_PASS_6 }}
+          TUNESAT_USER_7: ${{ secrets.TUNESAT_USER_7 }}
+          TUNESAT_PASS_7: ${{ secrets.TUNESAT_PASS_7 }}
+          TUNESAT_USER_8: ${{ secrets.TUNESAT_USER_8 }}
+          TUNESAT_PASS_8: ${{ secrets.TUNESAT_PASS_8 }}
+          ACCOUNT_NAMES:  ${{ secrets.ACCOUNT_NAMES }}
+          REPORT_EMAIL:   ${{ secrets.REPORT_EMAIL }}
+          GMAIL_SENDER:   ${{ secrets.GMAIL_SENDER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TUNESAT_USER_9: ${{ secrets.TUNESAT_USER_9 }}
+          TUNESAT_PASS_9: ${{ secrets.TUNESAT_PASS_9 }}
+          TUNESAT_USER_10: ${{ secrets.TUNESAT_USER_10 }}
+          TUNESAT_PASS_10: ${{ secrets.TUNESAT_PASS_10 }}
+          TUNESAT_USER_11: ${{ secrets.TUNESAT_USER_11 }}
+          TUNESAT_PASS_11: ${{ secrets.TUNESAT_PASS_11 }}
+          TUNESAT_USER_12: ${{ secrets.TUNESAT_USER_12 }}
+          TUNESAT_PASS_12: ${{ secrets.TUNESAT_PASS_12 }}
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/run_agent.py
+
+      - name: 💾 Subir reporte HTML como artefacto
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tunesat-report-${{ github.run_id }}
+          path: |
+            reports/
+            data/detections_*.json
+          retention-days: 30

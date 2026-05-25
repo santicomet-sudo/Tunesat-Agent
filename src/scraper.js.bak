@@ -1,0 +1,191 @@
+// src/scraper.js — Scraper actualizado con URLs y estructura real de Tunesat
+
+import { chromium } from 'playwright';
+import fs from 'fs';
+import path from 'path';
+
+const TUNESAT_HOME       = 'https://tunesat.com/tunesatportal/home';
+const TUNESAT_DETECTIONS = 'https://tunesat.com:4433/v2/detections/index.pl';
+const DATA_DIR           = './data';
+const COOKIES_DIR        = './data/cookies';
+
+fs.mkdirSync(COOKIES_DIR, { recursive: true });
+
+// ── Cuentas desde .env ───────────────────────────────────────────────────────
+export function getAccounts() {
+  const names = (process.env.ACCOUNT_NAMES || '').split(',').map(n => n.trim());
+  const accounts = [];
+  for (let i = 1; i <= 8; i++) {
+    const user = process.env[`TUNESAT_USER_${i}`];
+    const pass = process.env[`TUNESAT_PASS_${i}`];
+    if (user && pass && !user.includes('email_cuenta')) {
+      accounts.push({ index: i, name: names[i-1] || `Slot${i}`, user, pass });
+    }
+  }
+  return accounts;
+}
+
+export function getTodayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ── Cookies por cuenta ───────────────────────────────────────────────────────
+function cookiePath(account) {
+  return path.join(COOKIES_DIR, `cookies_${account.index}.json`);
+}
+
+function loadCookies(account) {
+  const p = cookiePath(account);
+  if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  return null;
+}
+
+function saveCookies(account, cookies) {
+  fs.writeFileSync(cookiePath(account), JSON.stringify(cookies, null, 2));
+}
+
+// ── Login manual (primera vez por cuenta) ───────────────────────────────────
+export async function loginManual(account) {
+  console.log(`\n🔐 Login manual para: ${account.name} (${account.user})`);
+  console.log('   Se abrirá Chrome. Haz login y cuando veas las detecciones, pulsa ENTER aquí.');
+
+  const browser = await chromium.launch({ headless: false });
+  const context = await browser.newContext();
+  const page    = await context.newPage();
+
+  await page.goto(TUNESAT_HOME, { waitUntil: 'networkidle' });
+
+  process.stdin.resume();
+  await new Promise(resolve => process.stdin.once('data', resolve));
+  process.stdin.pause();
+
+  const cookies = await context.cookies();
+  saveCookies(account, cookies);
+  console.log(`   ✅ ${cookies.length} cookies guardadas para ${account.name}`);
+
+  await browser.close();
+  return cookies;
+}
+
+// ── Extraer detecciones ──────────────────────────────────────────────────────
+async function extractDetections(page) {
+  const detections = [];
+
+  // Esperar a que cargue la tabla
+  try {
+    await page.waitForSelector('table tr', { timeout: 15000 });
+  } catch(_) {
+    return detections;
+  }
+  await page.waitForTimeout(2000);
+
+  const rows = await page.locator('table tr').all();
+
+  for (const row of rows) {
+    const cells = await row.locator('td').all();
+    if (cells.length < 4) continue;
+
+    const texts = await Promise.all(cells.map(c => c.innerText().then(t => t.trim())));
+
+    // Formato Tunesat: Duration | Date/Time | Channel | Show | Episode | Usage | File Path
+    // Detectar si es fila de datos (la duración tiene formato 0:XX)
+    if (!texts[0] || !texts[0].match(/^\d+:\d+$/)) continue;
+
+    detections.push({
+      duration: texts[0] || '',
+      datetime: texts[1] || '',
+      channel:  texts[2] || '',
+      show:     texts[3] || '',
+      episode:  texts[4] || '',
+      usage:    texts[5] || '',
+      filename: texts[6] || '',
+      // Extraer campos útiles
+      date:     texts[1] ? texts[1].split(' ')[0] : '',
+      time:     texts[1] ? texts[1].split(' ').slice(1).join(' ') : '',
+      title:    texts[6] ? texts[6].replace('.wav','').replace('.mp3','') : '',
+      country:  '',
+    });
+  }
+
+  return detections;
+}
+
+// ── Scraping de una cuenta ───────────────────────────────────────────────────
+async function scrapeAccount(browser, account) {
+  const result = { account: account.name, date: getTodayStr(), detections: [], error: null };
+
+  let cookies = loadCookies(account);
+  if (!cookies) {
+    result.error = `Sin cookies — ejecuta: node setup_cookies.mjs ${account.index}`;
+    return result;
+  }
+
+  const context = await browser.newContext();
+  await context.addCookies(cookies);
+  const page = await context.newPage();
+
+  try {
+    await page.goto(TUNESAT_DETECTIONS, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForTimeout(2000);
+
+    // Verificar que seguimos logueados
+    if (!page.url().includes('4433') && !page.url().includes('detections')) {
+      result.error = 'Sesión expirada — vuelve a hacer login con setup_cookies.mjs';
+      await context.close();
+      return result;
+    }
+
+    result.detections = await extractDetections(page);
+    console.log(`   ✅ ${account.name}: ${result.detections.length} detecciones`);
+
+    // Actualizar cookies (por si se renovaron)
+    saveCookies(account, await context.cookies());
+
+  } catch(err) {
+    result.error = `Error: ${err.message}`;
+    console.error(`   ❌ ${account.name}: ${err.message}`);
+  } finally {
+    await context.close();
+  }
+
+  return result;
+}
+
+// ── Main scraper ─────────────────────────────────────────────────────────────
+export async function runScraper() {
+  const accounts = getAccounts();
+  if (accounts.length === 0) throw new Error('No hay cuentas en el .env');
+
+  // Verificar qué cuentas tienen cookies
+  const sinCookies = accounts.filter(a => !loadCookies(a));
+  if (sinCookies.length > 0) {
+    console.log(`\n⚠️  Estas cuentas no tienen cookies guardadas:`);
+    sinCookies.forEach(a => console.log(`   - ${a.name} (${a.user})`));
+    console.log(`\n   Ejecuta primero: node setup_cookies.mjs`);
+  }
+
+  const conCookies = accounts.filter(a => loadCookies(a));
+  if (conCookies.length === 0) {
+    throw new Error('Ninguna cuenta tiene cookies. Ejecuta setup_cookies.mjs primero.');
+  }
+
+  console.log(`\n🎵 Scraping ${conCookies.length} cuentas de Tunesat...`);
+  const browser = await chromium.launch({ headless: true });
+
+  // En paralelo de 3 en 3
+  const results = [];
+  for (let i = 0; i < conCookies.length; i += 3) {
+    const batch = conCookies.slice(i, i + 3);
+    const batchResults = await Promise.all(batch.map(acc => scrapeAccount(browser, acc)));
+    results.push(...batchResults);
+  }
+
+  // Añadir resultados vacíos para cuentas sin cookies
+  sinCookies.forEach(a => results.push({
+    account: a.name, date: getTodayStr(), detections: [],
+    error: 'Sin cookies — ejecuta setup_cookies.mjs'
+  }));
+
+  await browser.close();
+  return results;
+}
