@@ -1,3 +1,8 @@
+- name: 🎭 Instalar Playwright + Chromium
+        run: |
+          playwright install chromium
+          sudo apt-get install -y libasound2t64
+          playwright install-deps chromium
 clear
 name: Tunesat Daily Report
 
@@ -35,7 +40,12 @@ jobs:
       - name: 📦 Instalar dependencias Python
         run: pip install -r requirements.txt
 
-      - name: 🎭 Instalar Playwright + Chromium
+      - name: 🎭- name: 🎭 Instalar Playwright + Chromium
+        run: |
+          playwright install chromium
+          sudo apt-get install -y libasound2t64
+          playwright install-deps chromium
+cd /Volumes/HD3/tunesat-agent && git add -A && git commit -m "Fix libasound2 Ubuntu 24" && git pushInstalar Playwright + Chromium
         run: |
           playwright install chromium
           playwright install-deps chromium
