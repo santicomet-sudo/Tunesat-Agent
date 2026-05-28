@@ -36,8 +36,9 @@ jobs:
 
       - name: 🎭 Instalar Playwright + Chromium
         run: |
-          playwright install chromium
-          sudo apt-get install -y libasound2t64 libgbm1 libnss3 libxss1 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2
+          sudo apt-get install -y libasound2t64
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libasound.so.2 /usr/lib/x86_64-linux-gnu/libasound.so.2.0.0 || true
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0 playwright install --with-deps chromium
 
       - name: 📂 Restaurar datos históricos (caché entre runs)
         uses: actions/cache@v4
