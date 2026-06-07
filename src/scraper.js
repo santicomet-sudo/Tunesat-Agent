@@ -197,7 +197,7 @@ async function scrapeAccount(browser, account) {
   try {
     await page.goto(TUNESAT_DETECTIONS, { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(2000);
-    if (!page.url().includes('4433')) {
+    if (!page.url().includes('tunesat.com')) {
       result.error = 'Sesion expirada — ejecuta setup_cookies.mjs';
       await context.close();
       return result;
@@ -220,7 +220,7 @@ export async function runScraper() {
   if (sinCookies.length > 0) console.log(`\n⚠️  Sin cookies: ${sinCookies.map(a => a.name).join(', ')}`);
   if (conCookies.length === 0) throw new Error('Ninguna cuenta tiene cookies.');
   console.log(`\n🎵 Scraping ${conCookies.length} cuentas...`);
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" });
   const results = [];
   for (let i = 0; i < conCookies.length; i += 3) {
     const batch = conCookies.slice(i, i + 3);

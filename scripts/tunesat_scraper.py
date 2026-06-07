@@ -23,7 +23,7 @@ ACCOUNT_NAMES = [n.strip() for n in os.environ.get("ACCOUNT_NAMES", "").split(",
 
 def get_accounts():
     accounts = []
-    for i in range(1, 10):
+    for i in range(1, 13):
         user = os.environ.get(f"TUNESAT_USER_{i}")
         pwd  = os.environ.get(f"TUNESAT_PASS_{i}")
         name = ACCOUNT_NAMES[i - 1] if i - 1 < len(ACCOUNT_NAMES) else f"Cuenta{i}"

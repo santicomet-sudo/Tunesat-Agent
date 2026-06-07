@@ -1,0 +1,20 @@
+import {chromium} from 'playwright';
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
+dotenv.config();
+const slot = parseInt(process.argv[2]);
+const DIR = './data/cookies';
+(async () => {
+  const b = await chromium.launch({headless: false, executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+  const c = await b.newContext();
+  const p = await c.newPage();
+  await p.goto('https://tunesat.com:4433/v2/detections/index.pl', {timeout: 30000});
+  console.log('Login y pulsa ENTER');
+  await new Promise(r => { process.stdin.setRawMode(true); process.stdin.resume(); process.stdin.once('data', r); });
+  const ck = await c.cookies();
+  fs.mkdirSync(DIR, {recursive: true});
+  fs.writeFileSync(path.join(DIR, 'cookies_' + slot + '.json'), JSON.stringify(ck, null, 2));
+  console.log('OK');
+  await b.close();
+})();
